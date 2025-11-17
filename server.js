@@ -1,0 +1,106 @@
+const express = require("express");
+const cors = require("cors");
+const dotenv = require("dotenv");
+const mongoose = require("mongoose");
+const http = require("http");
+const socketIo = require("socket.io");
+
+// Load environment variables
+dotenv.config();
+
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+});
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(
+    `📨 ${req.method} ${req.path} - ${new Date().toLocaleTimeString()}`
+  );
+  if (req.body && Object.keys(req.body).length > 0) {
+    console.log("📦 Request body:", req.body);
+  }
+  next();
+});
+
+// Serve static files (for audio uploads)
+app.use("/uploads", express.static("uploads"));
+
+// Routes
+app.get("/", (req, res) => {
+  res.json({
+    message: "Forge Church App Backend API",
+    version: "1.0.0",
+    status: "running",
+  });
+});
+
+// Make io available to routes
+app.set("io", io);
+
+// API Routes
+app.use("/api", require("./routes/api"));
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/users", require("./routes/users"));
+app.use("/api/teachings", require("./routes/teachings"));
+app.use("/api/prayers", require("./routes/prayerRequests"));
+
+// Socket.IO for real-time chat
+io.on("connection", (socket) => {
+  console.log("User connected:", socket.id);
+
+  // Join prayer room
+  socket.on("join-prayer-room", (roomId) => {
+    socket.join(roomId);
+    console.log(`User ${socket.id} joined prayer room: ${roomId}`);
+  });
+
+  // Handle new prayer request
+  socket.on("new-prayer-request", (data) => {
+    io.emit("prayer-request-update", data);
+  });
+
+  // Handle chat messages
+  socket.on("send-message", (data) => {
+    io.to(data.roomId).emit("new-message", data);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
+  });
+});
+
+// Database connection
+const connectDB = async () => {
+  try {
+    // We'll use MongoDB Atlas free tier
+    const conn = await mongoose.connect(
+      process.env.MONGODB_URI || "mongodb://localhost:27017/forge-church"
+    );
+    console.log(`MongoDB Connected: ${conn.connection.host}`);
+  } catch (error) {
+    console.error("Database connection error:", error);
+    process.exit(1);
+  }
+};
+
+// Start server
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, async () => {
+  await connectDB();
+  console.log(`🚀 Forge Church Backend Server running on port ${PORT}`);
+  console.log(`📡 Socket.IO server ready for real-time communication`);
+});
+
+module.exports = { app, io };
