@@ -18,7 +18,7 @@ router.get("/", optionalAuth, async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit))
       .populate("user", "name role")
-      .populate("prayingUsers", "name");
+      .populate("prayedBy.user", "name");
 
     const total = await PrayerRequest.countDocuments(filter);
 
@@ -46,7 +46,7 @@ router.get("/:id", optionalAuth, async (req, res) => {
   try {
     const prayerRequest = await PrayerRequest.findById(req.params.id)
       .populate("user", "name role")
-      .populate("prayingUsers", "name");
+      .populate("prayedBy.user", "name");
 
     if (!prayerRequest) {
       return res.status(404).json({
@@ -116,8 +116,15 @@ router.post("/:id/pray", authenticateToken, async (req, res) => {
     }
 
     // Add user to praying list
-    if (!prayerRequest.prayingUsers.includes(req.user._id)) {
-      prayerRequest.prayingUsers.push(req.user._id);
+    const alreadyPrayed = prayerRequest.prayedBy.some(
+      (prayer) => prayer.user.toString() === req.user._id.toString()
+    );
+
+    if (!alreadyPrayed) {
+      prayerRequest.prayedBy.push({
+        user: req.user._id,
+        prayedAt: new Date(),
+      });
       prayerRequest.prayerCount += 1;
       await prayerRequest.save();
     }
@@ -178,7 +185,7 @@ router.get("/category/:category", optionalAuth, async (req, res) => {
     })
       .sort({ createdAt: -1 })
       .populate("user", "name role")
-      .populate("prayingUsers", "name");
+      .populate("prayedBy.user", "name");
 
     res.json({
       success: true,
