@@ -119,11 +119,11 @@ router.post("/:id/pray", authenticateToken, async (req, res) => {
     const alreadyPrayed = prayerRequest.prayedBy.some(
       (prayer) => prayer.user.toString() === req.user._id.toString()
     );
-
+    
     if (!alreadyPrayed) {
       prayerRequest.prayedBy.push({
         user: req.user._id,
-        prayedAt: new Date(),
+        prayedAt: new Date()
       });
       prayerRequest.prayerCount += 1;
       await prayerRequest.save();
