@@ -19,8 +19,11 @@ const prayerRequestSchema = new mongoose.Schema(
     category: {
       type: String,
       enum: [
-        "health",
-        "family",
+        "Personal",
+        "Family", 
+        "Health",
+        "Church",
+        "Community",
         "work",
         "spiritual",
         "financial",
