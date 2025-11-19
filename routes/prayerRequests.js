@@ -46,7 +46,9 @@ router.get("/:id", optionalAuth, async (req, res) => {
   try {
     const prayerRequest = await PrayerRequest.findById(req.params.id)
       .populate("user", "name role")
-      .populate("prayedBy.user", "name");
+      .populate("prayedBy.user", "name")
+      .populate("comments.user", "name role")
+      .populate("updates.createdBy", "name role");
 
     if (!prayerRequest) {
       return res.status(404).json({
