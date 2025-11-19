@@ -119,11 +119,11 @@ router.post("/:id/pray", authenticateToken, async (req, res) => {
     const alreadyPrayed = prayerRequest.prayedBy.some(
       (prayer) => prayer.user.toString() === req.user._id.toString()
     );
-    
+
     if (!alreadyPrayed) {
       prayerRequest.prayedBy.push({
         user: req.user._id,
-        prayedAt: new Date()
+        prayedAt: new Date(),
       });
       prayerRequest.prayerCount += 1;
       await prayerRequest.save();
@@ -173,6 +173,86 @@ router.put("/:id", authenticateToken, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Add comment to prayer request
+router.post("/:id/comments", authenticateToken, async (req, res) => {
+  try {
+    const { text, isEncouragement = true } = req.body;
+
+    const prayerRequest = await PrayerRequest.findById(req.params.id);
+    if (!prayerRequest) {
+      return res.status(404).json({
+        success: false,
+        message: "Prayer request not found",
+      });
+    }
+
+    const newComment = {
+      user: req.user._id,
+      text,
+      isEncouragement,
+      createdAt: new Date(),
+    };
+
+    prayerRequest.comments.push(newComment);
+    await prayerRequest.save();
+
+    // Populate the new comment with user data
+    await prayerRequest.populate("comments.user", "name role");
+
+    // Get the newly added comment
+    const addedComment =
+      prayerRequest.comments[prayerRequest.comments.length - 1];
+
+    // Emit socket event for real-time updates
+    req.app.get("io").emit("prayer-comment-added", {
+      prayerId: prayerRequest._id,
+      comment: addedComment,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Comment added successfully",
+      comment: addedComment,
+    });
+  } catch (error) {
+    console.error("Add comment error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error adding comment",
+      error: error.message,
+    });
+  }
+});
+
+// Get comments for a prayer request
+router.get("/:id/comments", optionalAuth, async (req, res) => {
+  try {
+    const prayerRequest = await PrayerRequest.findById(req.params.id).populate(
+      "comments.user",
+      "name role"
+    );
+
+    if (!prayerRequest) {
+      return res.status(404).json({
+        success: false,
+        message: "Prayer request not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      comments: prayerRequest.comments,
+    });
+  } catch (error) {
+    console.error("Get comments error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching comments",
+      error: error.message,
+    });
   }
 });
 

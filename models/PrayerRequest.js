@@ -20,7 +20,7 @@ const prayerRequestSchema = new mongoose.Schema(
       type: String,
       enum: [
         "Personal",
-        "Family", 
+        "Family",
         "Health",
         "Church",
         "Community",
