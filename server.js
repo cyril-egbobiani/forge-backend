@@ -49,30 +49,41 @@ app.get("/", (req, res) => {
 app.set("io", io);
 
 // API Routes
+app.use("/api/chat", require("./routes/chat"));
+app.use("/api/badges", require("./routes/badges"));
 app.use("/api", require("./routes/api"));
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/users", require("./routes/users"));
 app.use("/api/teachings", require("./routes/teachings"));
 app.use("/api/prayers", require("./routes/prayerRequests"));
+app.use("/api/game-sessions", require("./routes/gameSessions"));
 
 // Socket.IO for real-time chat
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  // Join prayer room
-  socket.on("join-prayer-room", (roomId) => {
+  // Join chat room (group or private)
+  socket.on("join-chat-room", (roomId) => {
     socket.join(roomId);
-    console.log(`User ${socket.id} joined prayer room: ${roomId}`);
+    console.log(`User ${socket.id} joined chat room: ${roomId}`);
   });
 
-  // Handle new prayer request
-  socket.on("new-prayer-request", (data) => {
-    io.emit("prayer-request-update", data);
-  });
-
-  // Handle chat messages
-  socket.on("send-message", (data) => {
-    io.to(data.roomId).emit("new-message", data);
+  // Send chat message
+  socket.on("send-chat-message", async (data) => {
+    // data: { roomId, senderId, senderName, content }
+    io.to(data.roomId).emit("new-chat-message", data);
+    // Optionally save to DB
+    try {
+      const ChatMessage = require("./models/ChatMessage");
+      await ChatMessage.create({
+        roomId: data.roomId,
+        senderId: data.senderId,
+        senderName: data.senderName,
+        content: data.content,
+      });
+    } catch (err) {
+      console.error("Error saving chat message:", err);
+    }
   });
 
   socket.on("disconnect", () => {
