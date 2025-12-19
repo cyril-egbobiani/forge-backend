@@ -125,10 +125,73 @@ const optionalAuth = async (req, res, next) => {
   next();
 };
 
+// Admin authentication middleware
+const authenticateAdmin = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token =
+      authHeader && authHeader.startsWith("Bearer ")
+        ? authHeader.substring(7)
+        : null;
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "Admin access token required",
+      });
+    }
+
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "forge-church-secret"
+    );
+    const user = await User.findById(decoded.userId).select("-password");
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({
+        success: false,
+        message: "Admin user not found or account deactivated",
+      });
+    }
+
+    if (user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Admin privileges required",
+      });
+    }
+
+    // Update last seen
+    user.lastSeen = new Date();
+    await user.save();
+
+    req.user = user;
+    next();
+  } catch (error) {
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid admin token",
+      });
+    }
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({
+        success: false,
+        message: "Admin token expired",
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: "Admin token verification failed",
+    });
+  }
+};
+
 module.exports = {
   generateToken,
   generateRefreshToken,
   authenticateToken,
   requireRole,
   optionalAuth,
+  authenticateAdmin,
 };

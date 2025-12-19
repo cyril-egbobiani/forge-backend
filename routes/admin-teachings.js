@@ -1,0 +1,652 @@
+const express = require("express");
+const router = express.Router();
+const Teaching = require("../models/Teaching");
+const { authenticateAdmin } = require("../middleware/auth");
+
+// GET all teachings with pagination and filtering (Admin only)
+router.get("/", authenticateAdmin, async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      search = "",
+      category = "",
+      speaker = "",
+      series = "",
+      status = "",
+    } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Build filter object
+    const filter = {};
+
+    if (search) {
+      filter.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+        { "speaker.name": { $regex: search, $options: "i" } },
+        { "series.name": { $regex: search, $options: "i" } },
+      ];
+    }
+
+    if (category) {
+      filter.tags = { $in: [category.toLowerCase()] };
+    }
+
+    if (speaker) {
+      filter["speaker.name"] = { $regex: speaker, $options: "i" };
+    }
+
+    if (series) {
+      filter["series.name"] = { $regex: series, $options: "i" };
+    }
+
+    if (status) {
+      filter.isPublished = status === "published";
+    }
+
+    const teachings = await Teaching.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Teaching.countDocuments(filter);
+
+    // Transform teachings to match frontend interface
+    const transformedTeachings = teachings.map((teaching) => ({
+      id: teaching._id,
+      title: teaching.title,
+      description: teaching.description,
+      content: teaching.description, // Use description as content for now
+      author: teaching.speaker.name, // Frontend expects 'author', backend has 'speaker.name'
+      scripture: teaching.scripture?.reference || "",
+      category: teaching.tags?.[0] || "sermon",
+      tags: teaching.tags || [],
+      imageUrl: teaching.featuredImage || teaching.videoThumbnailUrl || "",
+      videoUrl: teaching.videoFile?.path || teaching.youtubeUrl || "",
+      audioUrl: teaching.audioFile?.path || "",
+      youtubeUrl: teaching.youtubeUrl || "",
+      youtubeVideoId: teaching.youtubeVideoId || "",
+      videoThumbnailUrl: teaching.videoThumbnailUrl || "",
+      isPublished: teaching.isPublished || false,
+      publishDate: teaching.publishDate || teaching.createdAt,
+      createdAt: teaching.createdAt,
+      updatedAt: teaching.updatedAt,
+      // Keep legacy fields for compatibility
+      speaker: teaching.speaker.name,
+      speakerImage: teaching.speaker.profilePicture,
+      duration: formatDuration(teaching.audioFile?.duration || 0),
+      image: teaching.featuredImage || "/placeholder-sermon.jpg",
+      series: teaching.series?.name || "",
+      status: teaching.isPublished ? "published" : "draft",
+      playCount: teaching.playCount || 0,
+      downloadCount: teaching.downloadCount || 0,
+      likes: teaching.likes?.length || 0,
+      comments: teaching.comments?.length || 0,
+    }));
+
+    res.json({
+      success: true,
+      data: transformedTeachings,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalItems: total,
+        itemsPerPage: parseInt(limit),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching teachings:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch teachings",
+      error: error.message,
+    });
+  }
+});
+
+// GET single teaching (Admin only)
+router.get("/:id", authenticateAdmin, async (req, res) => {
+  try {
+    const teaching = await Teaching.findById(req.params.id);
+
+    if (!teaching) {
+      return res.status(404).json({
+        success: false,
+        message: "Teaching not found",
+      });
+    }
+
+    // Transform teaching to match frontend interface
+    const transformedTeaching = {
+      id: teaching._id,
+      title: teaching.title,
+      description: teaching.description,
+      content: teaching.description, // Use description as content for now
+      author: teaching.speaker.name, // Frontend expects 'author', backend has 'speaker.name'
+      scripture: teaching.scripture?.reference || "",
+      category: teaching.tags?.[0] || "sermon",
+      tags: teaching.tags || [],
+      imageUrl: teaching.featuredImage || teaching.videoThumbnailUrl || "",
+      videoUrl: teaching.videoFile?.path || teaching.youtubeUrl || "",
+      audioUrl: teaching.audioFile?.path || "",
+      youtubeUrl: teaching.youtubeUrl || "",
+      youtubeVideoId: teaching.youtubeVideoId || "",
+      videoThumbnailUrl: teaching.videoThumbnailUrl || "",
+      isPublished: teaching.isPublished || false,
+      publishDate: teaching.publishDate || teaching.createdAt,
+      createdAt: teaching.createdAt,
+      updatedAt: teaching.updatedAt,
+      // Keep legacy fields for compatibility
+      speaker: teaching.speaker.name,
+      speakerImage: teaching.speaker.profilePicture,
+      duration: formatDuration(teaching.audioFile?.duration || 0),
+      image: teaching.featuredImage || "/placeholder-sermon.jpg",
+      series: teaching.series?.name || "",
+      scriptureText: teaching.scripture?.text || "",
+      transcript: teaching.transcript || "",
+      status: teaching.isPublished ? "published" : "draft",
+      playCount: teaching.playCount || 0,
+      downloadCount: teaching.downloadCount || 0,
+      likes: teaching.likes?.length || 0,
+      comments: teaching.comments?.length || 0,
+    };
+
+    res.json({
+      success: true,
+      data: transformedTeaching,
+    });
+  } catch (error) {
+    console.error("Error fetching teaching:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch teaching",
+      error: error.message,
+    });
+  }
+});
+
+// POST create new teaching (Admin only)
+router.post("/", authenticateAdmin, async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      speaker,
+      speakerImage,
+      audioUrl,
+      videoUrl,
+      youtubeVideoId,
+      youtubeUrl,
+      videoThumbnailUrl,
+      image,
+      category,
+      series,
+      scripture,
+      scriptureText,
+      transcript,
+      status,
+      tags,
+    } = req.body;
+
+    // Validate required fields
+    if (!title || !description) {
+      return res.status(400).json({
+        success: false,
+        message: "Title and description are required",
+      });
+    }
+
+    // Helper function to extract YouTube video ID from URL
+    const extractYouTubeId = (url) => {
+      if (!url) return null;
+      const regex =
+        /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+      const match = regex.exec(url);
+      return match ? match[1] : null;
+    };
+
+    // Process YouTube video data
+    let processedYouTubeId = youtubeVideoId;
+    let processedYouTubeUrl = youtubeUrl;
+
+    if (youtubeUrl && !youtubeVideoId) {
+      processedYouTubeId = extractYouTubeId(youtubeUrl);
+    }
+
+    if (youtubeVideoId && !youtubeUrl) {
+      processedYouTubeUrl = `https://www.youtube.com/watch?v=${youtubeVideoId}`;
+    }
+
+    // Generate YouTube thumbnail if not provided
+    let processedThumbnail = videoThumbnailUrl;
+    if (processedYouTubeId && !videoThumbnailUrl) {
+      processedThumbnail = `https://img.youtube.com/vi/${processedYouTubeId}/maxresdefault.jpg`;
+    }
+
+    // Transform frontend data to backend model
+    const teachingData = {
+      title,
+      description,
+      speaker: {
+        name: speaker || "Pastor",
+        profilePicture: speakerImage || null,
+      },
+      audioFile: audioUrl
+        ? {
+            path: audioUrl,
+            originalName: `${title}.mp3`,
+            filename: audioUrl.split("/").pop(),
+            format: "mp3",
+          }
+        : undefined,
+      videoFile: videoUrl
+        ? {
+            path: videoUrl,
+            originalName: `${title}.mp4`,
+            filename: videoUrl.split("/").pop(),
+            format: videoUrl.includes("youtube") ? "youtube" : "mp4",
+            thumbnail: processedThumbnail,
+          }
+        : undefined,
+      // YouTube integration fields
+      youtubeVideoId: processedYouTubeId,
+      youtubeUrl: processedYouTubeUrl,
+      videoThumbnailUrl: processedThumbnail,
+      videoFormat: processedYouTubeId ? "youtube" : videoUrl ? "mp4" : null,
+      featuredImage: image || processedThumbnail,
+      tags: category ? [category.toLowerCase()] : tags || [],
+      series: series
+        ? {
+            name: series,
+            order: 1,
+          }
+        : undefined,
+      scripture: {
+        reference: scripture || "",
+        text: scriptureText || "",
+      },
+      transcript,
+      isPublished: status === "published",
+      publishDate: status === "published" ? new Date() : null,
+    };
+
+    const newTeaching = new Teaching(teachingData);
+    const savedTeaching = await newTeaching.save();
+
+    // Transform response
+    const transformedTeaching = {
+      id: savedTeaching._id,
+      title: savedTeaching.title,
+      description: savedTeaching.description,
+      speaker: savedTeaching.speaker.name,
+      speakerImage: savedTeaching.speaker.profilePicture,
+      audioUrl: savedTeaching.audioFile?.path || "",
+      videoUrl: savedTeaching.videoFile?.path || "",
+      youtubeVideoId: savedTeaching.youtubeVideoId || "",
+      youtubeUrl: savedTeaching.youtubeUrl || "",
+      videoThumbnailUrl: savedTeaching.videoThumbnailUrl || "",
+      duration: formatDuration(savedTeaching.audioFile?.duration || 0),
+      image: savedTeaching.featuredImage || "/placeholder-sermon.jpg",
+      category: savedTeaching.tags?.[0] || "Sermon",
+      series: savedTeaching.series?.name || "",
+      scripture: savedTeaching.scripture?.reference || "",
+      publishDate: savedTeaching.publishDate || savedTeaching.createdAt,
+      status: savedTeaching.isPublished ? "published" : "draft",
+      playCount: 0,
+      downloadCount: 0,
+      likes: 0,
+      comments: 0,
+    };
+
+    res.status(201).json({
+      success: true,
+      message: "Teaching created successfully",
+      data: transformedTeaching,
+    });
+  } catch (error) {
+    console.error("Error creating teaching:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create teaching",
+      error: error.message,
+    });
+  }
+});
+
+// PUT update teaching (Admin only)
+router.put("/:id", authenticateAdmin, async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      speaker,
+      speakerImage,
+      audioUrl,
+      videoUrl,
+      youtubeVideoId,
+      youtubeUrl,
+      videoThumbnailUrl,
+      image,
+      category,
+      series,
+      scripture,
+      scriptureText,
+      transcript,
+      status,
+      tags,
+    } = req.body;
+
+    const teaching = await Teaching.findById(req.params.id);
+    if (!teaching) {
+      return res.status(404).json({
+        success: false,
+        message: "Teaching not found",
+      });
+    }
+
+    // Helper function to extract YouTube video ID from URL
+    const extractYouTubeId = (url) => {
+      if (!url) return null;
+      const regex =
+        /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+      const match = regex.exec(url);
+      return match ? match[1] : null;
+    };
+
+    // Process YouTube video data
+    let processedYouTubeId = youtubeVideoId;
+    let processedYouTubeUrl = youtubeUrl;
+
+    if (youtubeUrl && !youtubeVideoId) {
+      processedYouTubeId = extractYouTubeId(youtubeUrl);
+    }
+
+    if (youtubeVideoId && !youtubeUrl) {
+      processedYouTubeUrl = `https://www.youtube.com/watch?v=${youtubeVideoId}`;
+    }
+
+    // Generate YouTube thumbnail if not provided
+    let processedThumbnail = videoThumbnailUrl;
+    if (processedYouTubeId && !videoThumbnailUrl) {
+      processedThumbnail = `https://img.youtube.com/vi/${processedYouTubeId}/maxresdefault.jpg`;
+    }
+
+    // Update teaching data
+    const updateData = {
+      title: title || teaching.title,
+      description: description || teaching.description,
+      speaker: {
+        name: speaker || teaching.speaker.name,
+        profilePicture: speakerImage || teaching.speaker.profilePicture,
+      },
+      featuredImage: image || processedThumbnail || teaching.featuredImage,
+      tags: category ? [category.toLowerCase()] : tags || teaching.tags,
+      scripture: {
+        reference:
+          scripture !== undefined ? scripture : teaching.scripture?.reference,
+        text:
+          scriptureText !== undefined
+            ? scriptureText
+            : teaching.scripture?.text,
+      },
+      transcript: transcript !== undefined ? transcript : teaching.transcript,
+      isPublished:
+        status !== undefined ? status === "published" : teaching.isPublished,
+      // YouTube fields
+      youtubeVideoId:
+        processedYouTubeId !== undefined
+          ? processedYouTubeId
+          : teaching.youtubeVideoId,
+      youtubeUrl:
+        processedYouTubeUrl !== undefined
+          ? processedYouTubeUrl
+          : teaching.youtubeUrl,
+      videoThumbnailUrl:
+        processedThumbnail !== undefined
+          ? processedThumbnail
+          : teaching.videoThumbnailUrl,
+      videoFormat: processedYouTubeId
+        ? "youtube"
+        : videoUrl
+        ? "mp4"
+        : teaching.videoFormat,
+    };
+
+    // Update audio file if provided
+    if (audioUrl) {
+      updateData.audioFile = {
+        ...teaching.audioFile,
+        path: audioUrl,
+        originalName: `${title || teaching.title}.mp3`,
+        filename: audioUrl.split("/").pop(),
+      };
+    }
+
+    // Update video file if provided
+    if (videoUrl) {
+      updateData.videoFile = {
+        ...teaching.videoFile,
+        path: videoUrl,
+        originalName: `${title || teaching.title}.mp4`,
+        filename: videoUrl.split("/").pop(),
+        format: videoUrl.includes("youtube") ? "youtube" : "mp4",
+        thumbnail: processedThumbnail,
+      };
+    }
+
+    // Update series if provided
+    if (series) {
+      updateData.series = {
+        ...teaching.series,
+        name: series,
+      };
+    }
+
+    // Set publish date if status changed to published
+    if (status === "published" && !teaching.isPublished) {
+      updateData.publishDate = new Date();
+    }
+
+    const updatedTeaching = await Teaching.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }
+    );
+
+    // Transform response
+    const transformedTeaching = {
+      id: updatedTeaching._id,
+      title: updatedTeaching.title,
+      description: updatedTeaching.description,
+      speaker: updatedTeaching.speaker.name,
+      speakerImage: updatedTeaching.speaker.profilePicture,
+      audioUrl: updatedTeaching.audioFile?.path || "",
+      videoUrl: updatedTeaching.videoFile?.path || "",
+      youtubeVideoId: updatedTeaching.youtubeVideoId || "",
+      youtubeUrl: updatedTeaching.youtubeUrl || "",
+      videoThumbnailUrl: updatedTeaching.videoThumbnailUrl || "",
+      duration: formatDuration(updatedTeaching.audioFile?.duration || 0),
+      image: updatedTeaching.featuredImage || "/placeholder-sermon.jpg",
+      category: updatedTeaching.tags?.[0] || "Sermon",
+      series: updatedTeaching.series?.name || "",
+      scripture: updatedTeaching.scripture?.reference || "",
+      publishDate: updatedTeaching.publishDate || updatedTeaching.createdAt,
+      status: updatedTeaching.isPublished ? "published" : "draft",
+      playCount: updatedTeaching.playCount || 0,
+      downloadCount: updatedTeaching.downloadCount || 0,
+      likes: updatedTeaching.likes?.length || 0,
+      comments: updatedTeaching.comments?.length || 0,
+    };
+
+    res.json({
+      success: true,
+      message: "Teaching updated successfully",
+      data: transformedTeaching,
+    });
+  } catch (error) {
+    console.error("Error updating teaching:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update teaching",
+      error: error.message,
+    });
+  }
+});
+
+// DELETE teaching (Admin only)
+router.delete("/:id", authenticateAdmin, async (req, res) => {
+  try {
+    const teaching = await Teaching.findById(req.params.id);
+    if (!teaching) {
+      return res.status(404).json({
+        success: false,
+        message: "Teaching not found",
+      });
+    }
+
+    await Teaching.findByIdAndDelete(req.params.id);
+
+    res.json({
+      success: true,
+      message: "Teaching deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting teaching:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete teaching",
+      error: error.message,
+    });
+  }
+});
+
+// PATCH publish teaching (Admin only)
+router.patch("/:id/publish", authenticateAdmin, async (req, res) => {
+  try {
+    const teaching = await Teaching.findById(req.params.id);
+    if (!teaching) {
+      return res.status(404).json({
+        success: false,
+        message: "Teaching not found",
+      });
+    }
+
+    teaching.isPublished = true;
+    teaching.publishDate = new Date();
+    await teaching.save();
+
+    // Transform response
+    const transformedTeaching = {
+      id: teaching._id,
+      title: teaching.title,
+      description: teaching.description,
+      speaker: teaching.speaker.name,
+      speakerImage: teaching.speaker.profilePicture,
+      audioUrl: teaching.audioFile?.path || "",
+      videoUrl: teaching.videoFile?.path || "",
+      youtubeVideoId: teaching.youtubeVideoId || "",
+      youtubeUrl: teaching.youtubeUrl || "",
+      videoThumbnailUrl: teaching.videoThumbnailUrl || "",
+      duration: formatDuration(teaching.audioFile?.duration || 0),
+      image: teaching.featuredImage || "/placeholder-sermon.jpg",
+      category: teaching.tags?.[0] || "Sermon",
+      series: teaching.series?.name || "",
+      scripture: teaching.scripture?.reference || "",
+      publishDate: teaching.publishDate || teaching.createdAt,
+      status: teaching.isPublished ? "published" : "draft",
+      playCount: teaching.playCount || 0,
+      downloadCount: teaching.downloadCount || 0,
+      likes: teaching.likes?.length || 0,
+      comments: teaching.comments?.length || 0,
+    };
+
+    res.json({
+      success: true,
+      message: "Teaching published successfully",
+      data: transformedTeaching,
+    });
+  } catch (error) {
+    console.error("Error publishing teaching:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to publish teaching",
+      error: error.message,
+    });
+  }
+});
+
+// PATCH unpublish teaching (Admin only)
+router.patch("/:id/unpublish", authenticateAdmin, async (req, res) => {
+  try {
+    const teaching = await Teaching.findById(req.params.id);
+    if (!teaching) {
+      return res.status(404).json({
+        success: false,
+        message: "Teaching not found",
+      });
+    }
+
+    teaching.isPublished = false;
+    teaching.publishDate = null;
+    await teaching.save();
+
+    // Transform response
+    const transformedTeaching = {
+      id: teaching._id,
+      title: teaching.title,
+      description: teaching.description,
+      speaker: teaching.speaker.name,
+      speakerImage: teaching.speaker.profilePicture,
+      audioUrl: teaching.audioFile?.path || "",
+      videoUrl: teaching.videoFile?.path || "",
+      youtubeVideoId: teaching.youtubeVideoId || "",
+      youtubeUrl: teaching.youtubeUrl || "",
+      videoThumbnailUrl: teaching.videoThumbnailUrl || "",
+      duration: formatDuration(teaching.audioFile?.duration || 0),
+      image: teaching.featuredImage || "/placeholder-sermon.jpg",
+      category: teaching.tags?.[0] || "Sermon",
+      series: teaching.series?.name || "",
+      scripture: teaching.scripture?.reference || "",
+      publishDate: teaching.publishDate || teaching.createdAt,
+      status: teaching.isPublished ? "published" : "draft",
+      playCount: teaching.playCount || 0,
+      downloadCount: teaching.downloadCount || 0,
+      likes: teaching.likes?.length || 0,
+      comments: teaching.comments?.length || 0,
+    };
+
+    res.json({
+      success: true,
+      message: "Teaching unpublished successfully",
+      data: transformedTeaching,
+    });
+  } catch (error) {
+    console.error("Error unpublishing teaching:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to unpublish teaching",
+      error: error.message,
+    });
+  }
+});
+
+// Helper function to format duration from seconds to readable format
+function formatDuration(seconds) {
+  if (!seconds || seconds === 0) return "0:00";
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${secs
+      .toString()
+      .padStart(2, "0")}`;
+  } else {
+    return `${minutes}:${secs.toString().padStart(2, "0")}`;
+  }
+}
+
+module.exports = router;

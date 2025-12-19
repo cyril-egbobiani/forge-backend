@@ -30,6 +30,37 @@ const teachingSchema = new mongoose.Schema(
       duration: Number, // in seconds
       format: String,
     },
+    videoFile: {
+      filename: String,
+      originalName: String,
+      path: String,
+      size: Number,
+      duration: Number, // in seconds
+      format: String, // mp4, webm, etc.
+      thumbnail: String, // thumbnail image path
+    },
+    // YouTube video integration
+    youtubeVideoId: {
+      type: String,
+      default: null,
+    },
+    youtubeUrl: {
+      type: String,
+      default: null,
+    },
+    // Video metadata
+    videoThumbnailUrl: {
+      type: String,
+      default: null,
+    },
+    videoDuration: {
+      type: Number, // in seconds
+      default: null,
+    },
+    videoFormat: {
+      type: String, // 'youtube', 'mp4', 'webm', etc.
+      default: null,
+    },
     series: {
       name: String,
       description: String,

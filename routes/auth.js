@@ -1,6 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
 const router = express.Router();
 const User = require("../models/User");
 const {
@@ -8,6 +9,9 @@ const {
   generateRefreshToken,
   authenticateToken,
 } = require("../middleware/auth");
+
+// Initialize Google OAuth client
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Register new user
 router.post("/register", async (req, res) => {
@@ -133,6 +137,103 @@ router.post("/login", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error during login",
+    });
+  }
+});
+
+// Google authentication
+router.post("/google", async (req, res) => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Google ID token is required",
+      });
+    }
+
+    // Verify Google ID token
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid Google token",
+      });
+    }
+
+    const { sub: googleId, email, name, picture } = payload;
+
+    if (!email || !name) {
+      return res.status(400).json({
+        success: false,
+        message: "Required user information not available from Google",
+      });
+    }
+
+    // Check if user already exists
+    let user = await User.findOne({ email: email.toLowerCase() });
+
+    if (user) {
+      // User exists - update Google info if needed
+      if (!user.googleId) {
+        user.googleId = googleId;
+        user.profilePicture = picture || user.profilePicture;
+        await user.save();
+      }
+
+      // Check if account is active
+      if (!user.isActive) {
+        return res.status(401).json({
+          success: false,
+          message: "Account is deactivated",
+        });
+      }
+    } else {
+      // Create new user from Google info
+      user = new User({
+        name: name.trim(),
+        email: email.toLowerCase().trim(),
+        googleId,
+        profilePicture: picture,
+        password: "google_auth_" + Math.random().toString(36), // Random password for Google users
+        isActive: true,
+      });
+
+      await user.save();
+    }
+
+    // Update last seen
+    user.lastSeen = new Date();
+    await user.save();
+
+    // Generate tokens
+    const token = generateToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    // Return user data without password
+    const userData = await User.findById(user._id).select("-password");
+
+    res.json({
+      success: true,
+      message:
+        user.googleId === googleId
+          ? "Login successful"
+          : "Account linked and login successful",
+      user: userData,
+      token,
+      refreshToken,
+    });
+  } catch (error) {
+    console.error("Google authentication error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Google authentication failed",
     });
   }
 });
@@ -317,6 +418,149 @@ router.get("/verify", authenticateToken, async (req, res) => {
     message: "Token is valid",
     user: req.user,
   });
+});
+
+// Admin registration endpoint
+router.post("/admin/register", async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+
+    // Validation
+    if (!username || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Username, email, and password are required",
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long",
+      });
+    }
+
+    // Check if admin already exists
+    const existingAdmin = await User.findOne({
+      $or: [{ email: email.toLowerCase() }, { name: username }],
+    });
+
+    if (existingAdmin) {
+      return res.status(409).json({
+        success: false,
+        message: "Admin with this email or username already exists",
+      });
+    }
+
+    // Create new admin user
+    const newAdmin = new User({
+      name: username.trim(),
+      email: email.toLowerCase().trim(),
+      password,
+      role: "admin",
+      isVerified: true, // Auto-verify admins
+    });
+
+    await newAdmin.save();
+
+    // Generate tokens
+    const token = generateToken(newAdmin._id);
+    const refreshToken = generateRefreshToken(newAdmin._id);
+
+    // Update user with refresh token
+    newAdmin.refreshToken = refreshToken;
+    await newAdmin.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Admin account created successfully",
+      data: {
+        token,
+        user: {
+          id: newAdmin._id,
+          username: newAdmin.name,
+          email: newAdmin.email,
+          role: newAdmin.role,
+          createdAt: newAdmin.createdAt,
+          updatedAt: newAdmin.updatedAt,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Admin registration error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error creating admin account",
+    });
+  }
+});
+
+// Admin login endpoint
+router.post("/admin/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    // Validation
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Username and password are required",
+      });
+    }
+
+    // Find admin by username or email
+    const admin = await User.findOne({
+      $or: [{ name: username }, { email: username.toLowerCase() }],
+      role: "admin",
+    });
+
+    if (!admin) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid admin credentials",
+      });
+    }
+
+    // Check password
+    const isPasswordValid = await bcrypt.compare(password, admin.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid admin credentials",
+      });
+    }
+
+    // Generate tokens
+    const token = generateToken(admin._id);
+    const refreshToken = generateRefreshToken(admin._id);
+
+    // Update user with refresh token
+    admin.refreshToken = refreshToken;
+    admin.lastLogin = new Date();
+    await admin.save();
+
+    res.json({
+      success: true,
+      message: "Admin login successful",
+      data: {
+        token,
+        user: {
+          id: admin._id,
+          username: admin.name,
+          email: admin.email,
+          role: admin.role,
+          createdAt: admin.createdAt,
+          updatedAt: admin.updatedAt,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Admin login error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error during admin login",
+    });
+  }
 });
 
 module.exports = router;
