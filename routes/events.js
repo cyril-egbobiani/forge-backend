@@ -121,6 +121,17 @@ router.post("/", authenticateToken, requireAdmin, async (req, res) => {
       imageUrl,
     } = req.body;
 
+    console.log("📝 Creating event with data:", {
+      title,
+      description,
+      date,
+      time,
+      location,
+      category,
+      isActive,
+      imageUrl,
+    });
+
     // Validation
     if (!title || !description || !date || !time || !location) {
       return res.status(400).json({
@@ -199,6 +210,18 @@ router.put("/:id", authenticateToken, requireAdmin, async (req, res) => {
       isActive,
       imageUrl,
     } = req.body;
+
+    console.log("📝 Updating event with data:", {
+      title,
+      description,
+      date,
+      time,
+      location,
+      category,
+      isActive: isActive,
+      isActiveType: typeof isActive,
+      imageUrl,
+    });
 
     const event = await Event.findById(req.params.id);
     if (!event) {

@@ -17,6 +17,15 @@ router.get("/", async (req, res) => {
 
     console.log(`Found ${events.length} published events`);
 
+    // Debug: Log image URLs being returned
+    events.forEach((event, index) => {
+      if (event.featuredImage) {
+        console.log(
+          `📷 Event ${index + 1} (${event.title}) image: ${event.featuredImage}`
+        );
+      }
+    });
+
     // Transform events to match mobile app interface
     const transformedEvents = events.map((event) => ({
       id: event._id.toString(),
@@ -33,7 +42,7 @@ router.get("/", async (req, res) => {
       maxAttendees: event.maxAttendees || null,
       createdAt: event.createdAt.toISOString(),
       updatedAt: event.updatedAt.toISOString(),
-      featuredImage: event.featuredImage || null,
+      imageUrl: event.featuredImage || null, // Changed from featuredImage to imageUrl
     }));
 
     res.json({

@@ -93,7 +93,16 @@ router.post("/single", authenticateAdmin, upload.single("file"), (req, res) => {
       });
     }
 
-    const fileUrl = `/${req.file.path.replace(/\\/g, "/")}`;
+    // Generate full URL for file access
+    const baseUrl =
+      process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+    const fileUrl = `${baseUrl}/${req.file.path.replace(/\\/g, "/")}`;
+
+    console.log("📁 File uploaded:", {
+      originalName: req.file.originalname,
+      path: req.file.path,
+      url: fileUrl,
+    });
 
     res.json({
       success: true,
@@ -175,7 +184,16 @@ router.post("/image", authenticateAdmin, upload.single("image"), (req, res) => {
       });
     }
 
-    const imageUrl = `/${req.file.path.replace(/\\/g, "/")}`;
+    // Generate full URL for image access
+    const baseUrl =
+      process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+    const imageUrl = `${baseUrl}/${req.file.path.replace(/\\/g, "/")}`;
+
+    console.log("📸 Image uploaded:", {
+      originalName: req.file.originalname,
+      path: req.file.path,
+      url: imageUrl,
+    });
 
     res.json({
       success: true,
