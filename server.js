@@ -17,17 +17,12 @@ const io = socketIo(server, {
   },
 });
 
-// Middleware
+// Middleware - Simple CORS for debugging
 app.use(cors({
-  origin: [
-    "http://localhost:3000",
-    "http://localhost:5173", 
-    "https://forge-web-ivory.vercel.app",
-    "*" // Keep wildcard for development
-  ],
+  origin: true, // Allow all origins during development/debugging
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
