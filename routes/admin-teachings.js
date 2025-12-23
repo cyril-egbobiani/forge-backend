@@ -53,31 +53,25 @@ router.get("/", authenticateAdmin, async (req, res) => {
 
     const total = await Teaching.countDocuments(filter);
 
-    // Transform teachings to match frontend interface
+    // Transform teachings to simple frontend format
     const transformedTeachings = teachings.map((teaching) => ({
       id: teaching._id,
       title: teaching.title,
       description: teaching.description,
-      content: teaching.description, // Use description as content for now
-      author: teaching.speaker.name, // Frontend expects 'author', backend has 'speaker.name'
-      scripture: teaching.scripture?.reference || "",
+      content: teaching.transcript || teaching.description,
+      author: teaching.speaker?.name || "Pastor", // Simple author field
+      scripture: teaching.scripture?.reference,
       category: teaching.tags?.[0] || "sermon",
       tags: teaching.tags || [],
-      imageUrl: teaching.featuredImage || teaching.videoThumbnailUrl || "",
-      videoUrl: teaching.videoFile?.path || teaching.youtubeUrl || "",
-      audioUrl: teaching.audioFile?.path || "",
-      youtubeUrl: teaching.youtubeUrl || "",
-      youtubeVideoId: teaching.youtubeVideoId || "",
-      videoThumbnailUrl: teaching.videoThumbnailUrl || "",
+      thumbnailUrl: teaching.featuredImage || teaching.videoThumbnailUrl,
+      videoUrl: teaching.videoFile?.path,
+      audioUrl: teaching.audioFile?.path,
+      youtubeUrl: teaching.youtubeUrl,
+      youtubeVideoId: teaching.youtubeVideoId,
       isPublished: teaching.isPublished || false,
-      publishDate: teaching.publishDate || teaching.createdAt,
+      publishDate: teaching.publishDate,
       createdAt: teaching.createdAt,
       updatedAt: teaching.updatedAt,
-      // Keep legacy fields for compatibility
-      speaker: teaching.speaker.name,
-      speakerImage: teaching.speaker.profilePicture,
-      duration: formatDuration(teaching.audioFile?.duration || 0),
-      image: teaching.featuredImage || "/placeholder-sermon.jpg",
       series: teaching.series?.name || "",
       status: teaching.isPublished ? "published" : "draft",
       playCount: teaching.playCount || 0,
@@ -321,22 +315,29 @@ router.put("/:id", authenticateAdmin, async (req, res) => {
     const {
       title,
       description,
-      speaker,
-      speakerImage,
-      audioUrl,
-      videoUrl,
-      youtubeVideoId,
-      youtubeUrl,
-      videoThumbnailUrl,
-      image,
-      category,
-      series,
+      content,
+      author, // Simple flat field from frontend
       scripture,
-      scriptureText,
-      transcript,
-      status,
+      category,
       tags,
+      thumbnailUrl,
+      videoUrl,
+      youtubeUrl,
+      youtubeVideoId,
+      isPublished,
+      publishDate,
+      series,
+      status,
     } = req.body;
+
+    console.log("📝 Update request received:", {
+      title,
+      author,
+      thumbnailUrl,
+      youtubeUrl,
+      youtubeVideoId,
+      category,
+    });
 
     const teaching = await Teaching.findById(req.params.id);
     if (!teaching) {
@@ -367,46 +368,38 @@ router.put("/:id", authenticateAdmin, async (req, res) => {
       processedYouTubeUrl = `https://www.youtube.com/watch?v=${youtubeVideoId}`;
     }
 
-    // Generate YouTube thumbnail if not provided
-    let processedThumbnail = videoThumbnailUrl;
-    if (processedYouTubeId && !videoThumbnailUrl) {
-      processedThumbnail = `https://img.youtube.com/vi/${processedYouTubeId}/maxresdefault.jpg`;
+    // Generate YouTube thumbnail if not provided and we have video ID
+    let finalThumbnailUrl = thumbnailUrl;
+    if (processedYouTubeId && !thumbnailUrl) {
+      finalThumbnailUrl = `https://img.youtube.com/vi/${processedYouTubeId}/maxresdefault.jpg`;
     }
 
-    // Update teaching data
+    // Update teaching data - transform simple frontend fields to backend structure
     const updateData = {
       title: title || teaching.title,
       description: description || teaching.description,
       speaker: {
-        name: speaker || teaching.speaker.name,
-        profilePicture: speakerImage || teaching.speaker.profilePicture,
+        name: author || teaching.speaker?.name || "Pastor", // Transform author to speaker.name
+        profilePicture: teaching.speaker?.profilePicture || null,
       },
-      featuredImage: image || processedThumbnail || teaching.featuredImage,
-      tags: category ? [category.toLowerCase()] : tags || teaching.tags,
+      featuredImage: finalThumbnailUrl || teaching.featuredImage,
+      tags: Array.isArray(tags)
+        ? tags
+        : category
+        ? [category.toLowerCase()]
+        : teaching.tags || [],
       scripture: {
-        reference:
-          scripture !== undefined ? scripture : teaching.scripture?.reference,
-        text:
-          scriptureText !== undefined
-            ? scriptureText
-            : teaching.scripture?.text,
+        reference: scripture || teaching.scripture?.reference || null,
+        text: teaching.scripture?.text || null,
       },
-      transcript: transcript !== undefined ? transcript : teaching.transcript,
+      transcript: content || teaching.transcript,
       isPublished:
-        status !== undefined ? status === "published" : teaching.isPublished,
+        isPublished !== undefined ? isPublished : teaching.isPublished,
+      publishDate: publishDate ? new Date(publishDate) : teaching.publishDate,
       // YouTube fields
-      youtubeVideoId:
-        processedYouTubeId !== undefined
-          ? processedYouTubeId
-          : teaching.youtubeVideoId,
-      youtubeUrl:
-        processedYouTubeUrl !== undefined
-          ? processedYouTubeUrl
-          : teaching.youtubeUrl,
-      videoThumbnailUrl:
-        processedThumbnail !== undefined
-          ? processedThumbnail
-          : teaching.videoThumbnailUrl,
+      youtubeVideoId: processedYouTubeId || teaching.youtubeVideoId,
+      youtubeUrl: processedYouTubeUrl || teaching.youtubeUrl,
+      videoThumbnailUrl: finalThumbnailUrl || teaching.videoThumbnailUrl,
       videoFormat: processedYouTubeId
         ? "youtube"
         : videoUrl
@@ -414,25 +407,15 @@ router.put("/:id", authenticateAdmin, async (req, res) => {
         : teaching.videoFormat,
     };
 
-    // Update audio file if provided
-    if (audioUrl) {
-      updateData.audioFile = {
-        ...teaching.audioFile,
-        path: audioUrl,
-        originalName: `${title || teaching.title}.mp3`,
-        filename: audioUrl.split("/").pop(),
-      };
-    }
-
     // Update video file if provided
-    if (videoUrl) {
+    if (videoUrl && !processedYouTubeId) {
       updateData.videoFile = {
         ...teaching.videoFile,
         path: videoUrl,
         originalName: `${title || teaching.title}.mp4`,
         filename: videoUrl.split("/").pop(),
         format: videoUrl.includes("youtube") ? "youtube" : "mp4",
-        thumbnail: processedThumbnail,
+        thumbnail: finalThumbnailUrl,
       };
     }
 
@@ -449,35 +432,35 @@ router.put("/:id", authenticateAdmin, async (req, res) => {
       updateData.publishDate = new Date();
     }
 
+    console.log("💾 Updating teaching with data:", updateData);
+
     const updatedTeaching = await Teaching.findByIdAndUpdate(
       req.params.id,
       updateData,
       { new: true, runValidators: true }
     );
 
-    // Transform response
+    console.log("✅ Teaching updated successfully:", updatedTeaching._id);
+
+    // Transform response to simple frontend format
     const transformedTeaching = {
       id: updatedTeaching._id,
       title: updatedTeaching.title,
       description: updatedTeaching.description,
-      speaker: updatedTeaching.speaker.name,
-      speakerImage: updatedTeaching.speaker.profilePicture,
-      audioUrl: updatedTeaching.audioFile?.path || "",
-      videoUrl: updatedTeaching.videoFile?.path || "",
-      youtubeVideoId: updatedTeaching.youtubeVideoId || "",
-      youtubeUrl: updatedTeaching.youtubeUrl || "",
-      videoThumbnailUrl: updatedTeaching.videoThumbnailUrl || "",
-      duration: formatDuration(updatedTeaching.audioFile?.duration || 0),
-      image: updatedTeaching.featuredImage || "/placeholder-sermon.jpg",
-      category: updatedTeaching.tags?.[0] || "Sermon",
-      series: updatedTeaching.series?.name || "",
-      scripture: updatedTeaching.scripture?.reference || "",
-      publishDate: updatedTeaching.publishDate || updatedTeaching.createdAt,
-      status: updatedTeaching.isPublished ? "published" : "draft",
-      playCount: updatedTeaching.playCount || 0,
-      downloadCount: updatedTeaching.downloadCount || 0,
-      likes: updatedTeaching.likes?.length || 0,
-      comments: updatedTeaching.comments?.length || 0,
+      content: updatedTeaching.transcript || "",
+      author: updatedTeaching.speaker?.name || "Pastor", // Transform back to simple author field
+      scripture: updatedTeaching.scripture?.reference,
+      category: updatedTeaching.tags?.[0] || "sermon",
+      tags: updatedTeaching.tags || [],
+      thumbnailUrl: updatedTeaching.featuredImage,
+      videoUrl: updatedTeaching.videoFile?.path,
+      audioUrl: updatedTeaching.audioFile?.path,
+      youtubeUrl: updatedTeaching.youtubeUrl,
+      youtubeVideoId: updatedTeaching.youtubeVideoId,
+      isPublished: updatedTeaching.isPublished,
+      publishDate: updatedTeaching.publishDate,
+      createdAt: updatedTeaching.createdAt,
+      updatedAt: updatedTeaching.updatedAt,
     };
 
     res.json({

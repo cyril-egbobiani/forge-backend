@@ -18,12 +18,14 @@ const io = socketIo(server, {
 });
 
 // Middleware - Simple CORS for debugging
-app.use(cors({
-  origin: true, // Allow all origins during development/debugging
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-}));
+app.use(
+  cors({
+    origin: true, // Allow all origins during development/debugging
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
