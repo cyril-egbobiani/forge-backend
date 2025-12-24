@@ -117,34 +117,20 @@ router.get("/:id", authenticateAdmin, async (req, res) => {
       id: teaching._id,
       title: teaching.title,
       description: teaching.description,
-      content: teaching.description, // Use description as content for now
-      author: teaching.speaker.name, // Frontend expects 'author', backend has 'speaker.name'
+      content: teaching.transcript || teaching.description,
+      author: teaching.speaker?.name || "Pastor", // Frontend expects 'author', backend has 'speaker.name'
       scripture: teaching.scripture?.reference || "",
       category: teaching.tags?.[0] || "sermon",
       tags: teaching.tags || [],
-      imageUrl: teaching.featuredImage || teaching.videoThumbnailUrl || "",
+      thumbnailUrl: teaching.featuredImage || teaching.videoThumbnailUrl || "", // Use thumbnailUrl consistently
       videoUrl: teaching.videoFile?.path || teaching.youtubeUrl || "",
       audioUrl: teaching.audioFile?.path || "",
       youtubeUrl: teaching.youtubeUrl || "",
       youtubeVideoId: teaching.youtubeVideoId || "",
-      videoThumbnailUrl: teaching.videoThumbnailUrl || "",
       isPublished: teaching.isPublished || false,
       publishDate: teaching.publishDate || teaching.createdAt,
       createdAt: teaching.createdAt,
       updatedAt: teaching.updatedAt,
-      // Keep legacy fields for compatibility
-      speaker: teaching.speaker.name,
-      speakerImage: teaching.speaker.profilePicture,
-      duration: formatDuration(teaching.audioFile?.duration || 0),
-      image: teaching.featuredImage || "/placeholder-sermon.jpg",
-      series: teaching.series?.name || "",
-      scriptureText: teaching.scripture?.text || "",
-      transcript: teaching.transcript || "",
-      status: teaching.isPublished ? "published" : "draft",
-      playCount: teaching.playCount || 0,
-      downloadCount: teaching.downloadCount || 0,
-      likes: teaching.likes?.length || 0,
-      comments: teaching.comments?.length || 0,
     };
 
     res.json({
@@ -266,7 +252,19 @@ router.post("/", authenticateAdmin, async (req, res) => {
     };
 
     const newTeaching = new Teaching(teachingData);
+    console.log("💾 Creating teaching with data:", {
+      title: teachingData.title,
+      speakerName: teachingData.speaker?.name,
+      featuredImage: teachingData.featuredImage,
+    });
+
     const savedTeaching = await newTeaching.save();
+
+    console.log("✅ Teaching created successfully - saved data:", {
+      id: savedTeaching._id,
+      speakerName: savedTeaching.speaker?.name,
+      featuredImage: savedTeaching.featuredImage,
+    });
 
     // Transform response to match frontend format
     const transformedTeaching = {
@@ -287,6 +285,11 @@ router.post("/", authenticateAdmin, async (req, res) => {
       createdAt: savedTeaching.createdAt,
       updatedAt: savedTeaching.updatedAt,
     };
+
+    console.log("📤 Sending create response to frontend:", {
+      author: transformedTeaching.author,
+      thumbnailUrl: transformedTeaching.thumbnailUrl,
+    });
 
     res.status(201).json({
       success: true,
@@ -429,7 +432,14 @@ router.put("/:id", authenticateAdmin, async (req, res) => {
       updateData.publishDate = new Date();
     }
 
-    console.log("💾 Updating teaching with data:", updateData);
+    console.log("💾 Updating teaching with data:", {
+      title: updateData.title,
+      author: updateData.speaker?.name,
+      featuredImage: updateData.featuredImage,
+      thumbnailUrl,
+      imageUrl,
+      finalThumbnailUrl,
+    });
 
     const updatedTeaching = await Teaching.findByIdAndUpdate(
       req.params.id,
@@ -437,7 +447,11 @@ router.put("/:id", authenticateAdmin, async (req, res) => {
       { new: true, runValidators: true }
     );
 
-    console.log("✅ Teaching updated successfully:", updatedTeaching._id);
+    console.log("✅ Teaching updated successfully - saved data:", {
+      id: updatedTeaching._id,
+      speakerName: updatedTeaching.speaker?.name,
+      featuredImage: updatedTeaching.featuredImage,
+    });
 
     // Transform response to simple frontend format
     const transformedTeaching = {
@@ -459,6 +473,11 @@ router.put("/:id", authenticateAdmin, async (req, res) => {
       createdAt: updatedTeaching.createdAt,
       updatedAt: updatedTeaching.updatedAt,
     };
+
+    console.log("📤 Sending response to frontend:", {
+      author: transformedTeaching.author,
+      thumbnailUrl: transformedTeaching.thumbnailUrl,
+    });
 
     res.json({
       success: true,
