@@ -167,22 +167,27 @@ router.post("/", authenticateAdmin, async (req, res) => {
     const {
       title,
       description,
-      speaker,
-      speakerImage,
-      audioUrl,
-      videoUrl,
-      youtubeVideoId,
-      youtubeUrl,
-      videoThumbnailUrl,
-      image,
-      category,
-      series,
+      content,
+      author, // Simple flat field from frontend
       scripture,
-      scriptureText,
-      transcript,
-      status,
+      category,
       tags,
+      thumbnailUrl, // Frontend sends thumbnailUrl for images
+      videoUrl,
+      youtubeUrl,
+      youtubeVideoId,
+      isPublished,
+      publishDate,
     } = req.body;
+
+    console.log("🆕 Create request received:", {
+      title,
+      author,
+      thumbnailUrl,
+      youtubeUrl,
+      youtubeVideoId,
+      category,
+    });
 
     // Validate required fields
     if (!title || !description) {
@@ -214,8 +219,8 @@ router.post("/", authenticateAdmin, async (req, res) => {
     }
 
     // Generate YouTube thumbnail if not provided
-    let processedThumbnail = videoThumbnailUrl;
-    if (processedYouTubeId && !videoThumbnailUrl) {
+    let processedThumbnail = thumbnailUrl;
+    if (processedYouTubeId && !thumbnailUrl) {
       processedThumbnail = `https://img.youtube.com/vi/${processedYouTubeId}/maxresdefault.jpg`;
     }
 
@@ -223,18 +228,11 @@ router.post("/", authenticateAdmin, async (req, res) => {
     const teachingData = {
       title,
       description,
+      transcript: content,
       speaker: {
-        name: speaker || "Pastor",
-        profilePicture: speakerImage || null,
+        name: author || "Pastor",
+        profilePicture: null,
       },
-      audioFile: audioUrl
-        ? {
-            path: audioUrl,
-            originalName: `${title}.mp3`,
-            filename: audioUrl.split("/").pop(),
-            format: "mp3",
-          }
-        : undefined,
       videoFile: videoUrl
         ? {
             path: videoUrl,
@@ -249,49 +247,45 @@ router.post("/", authenticateAdmin, async (req, res) => {
       youtubeUrl: processedYouTubeUrl,
       videoThumbnailUrl: processedThumbnail,
       videoFormat: processedYouTubeId ? "youtube" : videoUrl ? "mp4" : null,
-      featuredImage: image || processedThumbnail,
-      tags: category ? [category.toLowerCase()] : tags || [],
-      series: series
-        ? {
-            name: series,
-            order: 1,
-          }
-        : undefined,
+      featuredImage: thumbnailUrl || processedThumbnail,
+      tags: Array.isArray(tags)
+        ? tags.map((tag) => tag.toLowerCase())
+        : category
+        ? [category.toLowerCase()]
+        : [],
       scripture: {
         reference: scripture || "",
-        text: scriptureText || "",
+        text: "",
       },
-      transcript,
-      isPublished: status === "published",
-      publishDate: status === "published" ? new Date() : null,
+      isPublished: isPublished || false,
+      publishDate: isPublished
+        ? publishDate
+          ? new Date(publishDate)
+          : new Date()
+        : null,
     };
 
     const newTeaching = new Teaching(teachingData);
     const savedTeaching = await newTeaching.save();
 
-    // Transform response
+    // Transform response to match frontend format
     const transformedTeaching = {
       id: savedTeaching._id,
       title: savedTeaching.title,
       description: savedTeaching.description,
-      speaker: savedTeaching.speaker.name,
-      speakerImage: savedTeaching.speaker.profilePicture,
-      audioUrl: savedTeaching.audioFile?.path || "",
-      videoUrl: savedTeaching.videoFile?.path || "",
-      youtubeVideoId: savedTeaching.youtubeVideoId || "",
-      youtubeUrl: savedTeaching.youtubeUrl || "",
-      videoThumbnailUrl: savedTeaching.videoThumbnailUrl || "",
-      duration: formatDuration(savedTeaching.audioFile?.duration || 0),
-      image: savedTeaching.featuredImage || "/placeholder-sermon.jpg",
-      category: savedTeaching.tags?.[0] || "Sermon",
-      series: savedTeaching.series?.name || "",
-      scripture: savedTeaching.scripture?.reference || "",
-      publishDate: savedTeaching.publishDate || savedTeaching.createdAt,
-      status: savedTeaching.isPublished ? "published" : "draft",
-      playCount: 0,
-      downloadCount: 0,
-      likes: 0,
-      comments: 0,
+      content: savedTeaching.transcript || savedTeaching.description,
+      author: savedTeaching.speaker?.name || "Pastor",
+      scripture: savedTeaching.scripture?.reference,
+      category: savedTeaching.tags?.[0] || "sermon",
+      tags: savedTeaching.tags || [],
+      thumbnailUrl: savedTeaching.featuredImage,
+      videoUrl: savedTeaching.videoFile?.path,
+      youtubeUrl: savedTeaching.youtubeUrl,
+      youtubeVideoId: savedTeaching.youtubeVideoId,
+      isPublished: savedTeaching.isPublished,
+      publishDate: savedTeaching.publishDate,
+      createdAt: savedTeaching.createdAt,
+      updatedAt: savedTeaching.updatedAt,
     };
 
     res.status(201).json({
@@ -321,6 +315,7 @@ router.put("/:id", authenticateAdmin, async (req, res) => {
       category,
       tags,
       thumbnailUrl,
+      imageUrl, // For uploaded images
       videoUrl,
       youtubeUrl,
       youtubeVideoId,
@@ -334,6 +329,7 @@ router.put("/:id", authenticateAdmin, async (req, res) => {
       title,
       author,
       thumbnailUrl,
+      imageUrl,
       youtubeUrl,
       youtubeVideoId,
       category,
@@ -382,7 +378,8 @@ router.put("/:id", authenticateAdmin, async (req, res) => {
         name: author || teaching.speaker?.name || "Pastor", // Transform author to speaker.name
         profilePicture: teaching.speaker?.profilePicture || null,
       },
-      featuredImage: finalThumbnailUrl || teaching.featuredImage,
+      featuredImage:
+        imageUrl || thumbnailUrl || finalThumbnailUrl || teaching.featuredImage,
       tags: Array.isArray(tags)
         ? tags
         : category
