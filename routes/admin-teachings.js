@@ -51,6 +51,16 @@ router.get("/", authenticateAdmin, async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit));
 
+    console.log(
+      "🔍 Raw teachings from database:",
+      teachings.map((t) => ({
+        id: t._id,
+        title: t.title,
+        speaker: t.speaker,
+        featuredImage: t.featuredImage,
+      }))
+    );
+
     const total = await Teaching.countDocuments(filter);
 
     // Transform teachings to simple frontend format
@@ -79,6 +89,16 @@ router.get("/", authenticateAdmin, async (req, res) => {
       likes: teaching.likes?.length || 0,
       comments: teaching.comments?.length || 0,
     }));
+
+    console.log(
+      "📤 Transformed teachings being sent to frontend:",
+      transformedTeachings.map((t) => ({
+        id: t.id,
+        title: t.title,
+        author: t.author,
+        thumbnailUrl: t.thumbnailUrl,
+      }))
+    );
 
     res.json({
       success: true,
@@ -308,6 +328,9 @@ router.post("/", authenticateAdmin, async (req, res) => {
 
 // PUT update teaching (Admin only)
 router.put("/:id", authenticateAdmin, async (req, res) => {
+  console.log("🚀 PUT route called for ID:", req.params.id);
+  console.log("📦 Raw request body:", JSON.stringify(req.body, null, 2));
+
   try {
     const {
       title,
@@ -340,11 +363,19 @@ router.put("/:id", authenticateAdmin, async (req, res) => {
 
     const teaching = await Teaching.findById(req.params.id);
     if (!teaching) {
+      console.log("❌ Teaching not found with ID:", req.params.id);
       return res.status(404).json({
         success: false,
         message: "Teaching not found",
       });
     }
+
+    console.log("✅ Teaching found:", {
+      id: teaching._id,
+      title: teaching.title,
+      currentSpeaker: teaching.speaker,
+      currentFeaturedImage: teaching.featuredImage,
+    });
 
     // Helper function to extract YouTube video ID from URL
     const extractYouTubeId = (url) => {
