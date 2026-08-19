@@ -3,8 +3,8 @@ const User = require("../models/User");
 require("dotenv").config();
 
 // Configuration
-const ADMIN_USERNAME = "admin123";
-const ADMIN_PASSWORD = "admin123456";
+const ADMIN_USERNAME = "";
+const ADMIN_PASSWORD = "";
 const ADMIN_NAME = "System Admin";
 
 async function createAdminUser() {
