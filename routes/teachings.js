@@ -33,29 +33,58 @@ const upload = multer({
   },
 });
 
+// GET most recent featured teaching (for mobile home screen)
+router.get("/recent", optionalAuth, async (req, res) => {
+  try {
+    const teaching = await Teaching.findOne({ isPublished: true })
+      .sort({ createdAt: -1 }) || await Teaching.findOne().sort({ createdAt: -1 });
+
+    if (!teaching) {
+      return res.status(404).json({ success: false, message: "No teachings found" });
+    }
+
+    res.json({
+      success: true,
+      data: teaching,
+    });
+  } catch (error) {
+    console.error("Get recent teaching error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Get all teachings
 router.get("/", optionalAuth, async (req, res) => {
   try {
-    console.log("📖 Getting all teachings...");
     const teachings = await Teaching.find()
-      .sort({ datePreached: -1 })
+      .sort({ createdAt: -1 })
       .limit(50);
-    console.log(`📖 Found ${teachings.length} teachings`);
-    console.log(
-      "📖 Sample teaching:",
-      teachings.length > 0 ? teachings[0].title : "No teachings"
-    );
-    if (teachings.length > 0) {
-      console.log(
-        "📖 Sample JSON structure:",
-        JSON.stringify(teachings[0], null, 2)
-      );
-    }
     res.json(teachings);
-    console.log("📖 Response sent successfully");
   } catch (error) {
     console.error("Get teachings error:", error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Get AI Insights & Key Moments by ID
+router.get("/:id/insights", async (req, res) => {
+  try {
+    const teaching = await Teaching.findById(req.params.id);
+    if (!teaching) {
+      return res.status(404).json({ success: false, message: "Teaching not found" });
+    }
+    res.json({
+      success: true,
+      data: {
+        teachingId: teaching._id,
+        title: teaching.title,
+        speaker: teaching.speaker?.name || "Pastor",
+        aiInsights: teaching.aiInsights,
+        keyMoments: teaching.keyMoments || [],
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -79,34 +108,33 @@ router.post(
   requireRole("pastor", "admin"),
   async (req, res) => {
     try {
-      console.log("📖 Creating teaching with data:", req.body);
-      const { title, speaker, description, series, scripture, duration } =
+      const { title, speaker, description, series, scripture, duration, aiInsights, keyMoments } =
         req.body;
 
       const teaching = new Teaching({
         title,
         speaker: {
-          name: speaker, // speaker is a string, so we put it in speaker.name
+          name: speaker || "Pastor",
           profilePicture: null,
         },
         description,
         series: {
-          name: series, // series is a string, so we put it in series.name
+          name: series,
           description: null,
           order: 1,
         },
         scripture: {
-          reference: scripture, // scripture is a string, so we put it in scripture.reference
+          reference: scripture,
           text: null,
         },
-        duration: parseInt(duration),
-        audioUrl: null, // No audio file for JSON requests
+        duration: parseInt(duration) || 0,
+        audioUrl: null,
+        aiInsights: aiInsights || undefined,
+        keyMoments: Array.isArray(keyMoments) ? keyMoments : [],
         datePreached: new Date(),
       });
 
-      console.log("🔍 About to save teaching:", teaching);
       await teaching.save();
-      console.log("✅ Teaching saved successfully:", teaching._id);
       res.status(201).json(teaching);
     } catch (error) {
       console.error("Create teaching error:", error);
@@ -129,17 +157,17 @@ router.post(
       const teaching = new Teaching({
         title,
         speaker: {
-          name: speaker, // speaker is a string, so we put it in speaker.name
+          name: speaker,
           profilePicture: null,
         },
         description,
         series: {
-          name: series, // series is a string, so we put it in series.name
+          name: series,
           description: null,
           order: 1,
         },
         scripture: {
-          reference: scripture, // scripture is a string, so we put it in scripture.reference
+          reference: scripture,
           text: null,
         },
         duration: parseInt(duration),

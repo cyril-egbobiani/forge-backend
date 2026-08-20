@@ -1,5 +1,68 @@
 const mongoose = require("mongoose");
 
+const keyMomentSchema = new mongoose.Schema({
+  timestamp: {
+    type: String,
+    required: true,
+  },
+  seconds: {
+    type: Number,
+    required: true,
+  },
+  title: {
+    type: String,
+    required: true,
+  },
+  subtitle: {
+    type: String,
+    default: "",
+  },
+  scripture: {
+    type: String,
+    default: "",
+  },
+  takeaway: {
+    type: String,
+    default: "",
+  },
+});
+
+const scriptureRefSchema = new mongoose.Schema({
+  reference: {
+    type: String,
+    required: true,
+  },
+  context: {
+    type: String,
+    default: "",
+  },
+  greekExegesis: {
+    type: String,
+    default: "",
+  },
+});
+
+const aiInsightsSchema = new mongoose.Schema({
+  coreThesis: {
+    type: String,
+    default: "",
+  },
+  theologicalContext: {
+    type: String,
+    default: "",
+  },
+  scriptureReferences: [scriptureRefSchema],
+  reflectionPrompts: [
+    {
+      type: String,
+    },
+  ],
+  generatedAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
 const teachingSchema = new mongoose.Schema(
   {
     title: {
@@ -15,7 +78,7 @@ const teachingSchema = new mongoose.Schema(
       name: {
         type: String,
         required: true,
-        default: "Pastor",
+        default: "Pastor Cyril Thompson",
       },
       profilePicture: {
         type: String,
@@ -27,7 +90,7 @@ const teachingSchema = new mongoose.Schema(
       originalName: String,
       path: String,
       size: Number,
-      duration: Number, // in seconds
+      duration: Number,
       format: String,
     },
     videoFile: {
@@ -35,11 +98,10 @@ const teachingSchema = new mongoose.Schema(
       originalName: String,
       path: String,
       size: Number,
-      duration: Number, // in seconds
-      format: String, // mp4, webm, etc.
-      thumbnail: String, // thumbnail image path
+      duration: Number,
+      format: String,
+      thumbnail: String,
     },
-    // YouTube video integration
     youtubeVideoId: {
       type: String,
       default: null,
@@ -48,26 +110,25 @@ const teachingSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
-    // Video metadata
     videoThumbnailUrl: {
       type: String,
       default: null,
     },
     videoDuration: {
-      type: Number, // in seconds
+      type: Number,
       default: null,
     },
     videoFormat: {
-      type: String, // 'youtube', 'mp4', 'webm', etc.
+      type: String,
       default: null,
     },
     series: {
       name: String,
       description: String,
-      order: Number, // Position in series
+      order: Number,
     },
     scripture: {
-      reference: String, // e.g., "John 3:16"
+      reference: String,
       text: String,
     },
     tags: [
@@ -80,6 +141,11 @@ const teachingSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    aiInsights: {
+      type: aiInsightsSchema,
+      default: () => ({}),
+    },
+    keyMoments: [keyMomentSchema],
     isPublished: {
       type: Boolean,
       default: false,
@@ -131,7 +197,6 @@ const teachingSchema = new mongoose.Schema(
   }
 );
 
-// Index for search functionality
 teachingSchema.index({
   title: "text",
   description: "text",
