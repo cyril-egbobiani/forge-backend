@@ -6,6 +6,7 @@ const {
   requireRole,
   optionalAuth,
 } = require("../middleware/auth");
+const aiService = require("../services/aiService");
 const multer = require("multer");
 const path = require("path");
 
@@ -31,6 +32,62 @@ const upload = multer({
       cb(new Error("Only audio files are allowed!"));
     }
   },
+});
+
+// POST interactive AI study query (Mobile App users)
+router.post("/ai-query", optionalAuth, async (req, res) => {
+  try {
+    const { question, teachingTitle, speaker, scripture, transcript, keyMoment, chatHistory } = req.body;
+
+    if (!question || question.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "Question is required" });
+    }
+
+    const result = await aiService.askAiStudy({
+      question,
+      teachingTitle,
+      speaker,
+      scripture,
+      transcript,
+      keyMoment,
+      chatHistory,
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error("AI Query Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "AI Study processing error",
+      error: error.message,
+    });
+  }
+});
+
+// POST interactive Key Moment Deep-Dive (Mobile App users)
+router.post("/moment-ai", optionalAuth, async (req, res) => {
+  try {
+    const { momentTitle, momentSubtitle, timestamp, scripture, takeaway, teachingTitle, speaker } = req.body;
+
+    const result = await aiService.getKeyMomentInsight({
+      momentTitle,
+      momentSubtitle,
+      timestamp,
+      scripture,
+      takeaway,
+      teachingTitle,
+      speaker,
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error("Key Moment AI Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Key Moment AI processing error",
+      error: error.message,
+    });
+  }
 });
 
 // GET most recent featured teaching (for mobile home screen)

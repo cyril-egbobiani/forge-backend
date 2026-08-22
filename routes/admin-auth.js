@@ -60,7 +60,7 @@ router.post("/login", async (req, res) => {
         email: user.email,
         role: user.role,
       },
-      process.env.JWT_SECRET || "fallback-secret-key",
+      process.env.JWT_SECRET || "forge-church-secret",
       { expiresIn: "24h" }
     );
 
@@ -145,7 +145,7 @@ router.post("/register", async (req, res) => {
         email: user.email,
         role: user.role,
       },
-      process.env.JWT_SECRET || "fallback-secret-key",
+      process.env.JWT_SECRET || "forge-church-secret",
       { expiresIn: "24h" }
     );
 
@@ -188,7 +188,7 @@ router.get("/verify", async (req, res) => {
 
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET || "fallback-secret-key"
+      process.env.JWT_SECRET || "forge-church-secret"
     );
     const user = await User.findById(decoded.userId).select("-password");
 

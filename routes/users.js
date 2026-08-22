@@ -54,6 +54,65 @@ router.get(
   }
 );
 
+// Get current user profile
+router.get("/profile", authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id)
+      .select("-password")
+      .populate("prayerRequests")
+      .populate("favoriteTeachings");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    console.error("Get profile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching user profile",
+    });
+  }
+});
+
+// Update current user profile
+router.put("/profile", authenticateToken, async (req, res) => {
+  try {
+    const { name, phoneNumber, email, profilePicture } = req.body;
+    const updateData = {};
+
+    if (name) updateData.name = name.trim();
+    if (phoneNumber !== undefined)
+      updateData.phoneNumber = phoneNumber ? phoneNumber.trim() : null;
+    if (email) updateData.email = email.toLowerCase().trim();
+    if (profilePicture) updateData.profilePicture = profilePicture;
+
+    const user = await User.findByIdAndUpdate(req.user._id, updateData, {
+      new: true,
+      runValidators: true,
+    }).select("-password");
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      user,
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating profile",
+    });
+  }
+});
+
 // Get user by ID
 router.get("/:id", authenticateToken, async (req, res) => {
   try {

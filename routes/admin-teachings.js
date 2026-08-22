@@ -7,13 +7,15 @@ const aiService = require("../services/aiService");
 // POST preview AI Insights & Key Moments without saving (Admin only)
 router.post("/generate-ai", authenticateAdmin, async (req, res) => {
   try {
-    const { title, description, content, author, scripture } = req.body;
+    const { title, description, content, author, scripture, youtubeUrl, youtubeVideoId } = req.body;
     const insights = await aiService.generateTeachingInsights({
       title: title || "Sermon Teaching",
       description: description || "",
       speaker: author || "Pastor",
       scripture: scripture || "",
       transcript: content || "",
+      youtubeUrl,
+      youtubeVideoId,
     });
     res.json({
       success: true,
@@ -46,6 +48,8 @@ router.post("/:id/generate-ai", authenticateAdmin, async (req, res) => {
       speaker: teaching.speaker?.name || "Pastor",
       scripture: teaching.scripture?.reference || "",
       transcript: teaching.transcript || "",
+      youtubeUrl: teaching.youtubeUrl,
+      youtubeVideoId: teaching.youtubeVideoId,
     });
 
     teaching.aiInsights = insights.aiInsights;
@@ -128,7 +132,11 @@ router.get("/", authenticateAdmin, async (req, res) => {
       scripture: teaching.scripture?.reference,
       category: teaching.tags?.[0] || "sermon",
       tags: teaching.tags || [],
-      thumbnailUrl: teaching.featuredImage || teaching.videoThumbnailUrl,
+      thumbnailUrl: (
+        teaching.youtubeVideoId
+          ? `https://img.youtube.com/vi/${teaching.youtubeVideoId}/hqdefault.jpg`
+          : (teaching.featuredImage || teaching.videoThumbnailUrl || "")
+      ).replace(/http:\/\/localhost:5000/g, "http://localhost:3000"),
       videoUrl: teaching.videoFile?.path,
       audioUrl: teaching.audioFile?.path,
       youtubeUrl: teaching.youtubeUrl,
@@ -246,7 +254,7 @@ router.post("/", authenticateAdmin, async (req, res) => {
     const extractYouTubeId = (url) => {
       if (!url) return null;
       const regex =
-        /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+        /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|live|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
       const match = regex.exec(url);
       return match ? match[1] : null;
     };
@@ -254,11 +262,12 @@ router.post("/", authenticateAdmin, async (req, res) => {
     let processedYouTubeId = youtubeVideoId;
     let processedYouTubeUrl = youtubeUrl;
 
-    if (youtubeUrl && !youtubeVideoId) {
-      processedYouTubeId = extractYouTubeId(youtubeUrl);
-    }
-
-    if (youtubeVideoId && !youtubeUrl) {
+    if (youtubeUrl) {
+      const extracted = extractYouTubeId(youtubeUrl);
+      if (extracted) {
+        processedYouTubeId = extracted;
+      }
+    } else if (youtubeVideoId && !youtubeUrl) {
       processedYouTubeUrl = `https://www.youtube.com/watch?v=${youtubeVideoId}`;
     }
 
@@ -381,7 +390,7 @@ router.put("/:id", authenticateAdmin, async (req, res) => {
     const extractYouTubeId = (url) => {
       if (!url) return null;
       const regex =
-        /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+        /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|live|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
       const match = regex.exec(url);
       return match ? match[1] : null;
     };
@@ -389,11 +398,12 @@ router.put("/:id", authenticateAdmin, async (req, res) => {
     let processedYouTubeId = youtubeVideoId;
     let processedYouTubeUrl = youtubeUrl;
 
-    if (youtubeUrl && !youtubeVideoId) {
-      processedYouTubeId = extractYouTubeId(youtubeUrl);
-    }
-
-    if (youtubeVideoId && !youtubeUrl) {
+    if (youtubeUrl) {
+      const extracted = extractYouTubeId(youtubeUrl);
+      if (extracted) {
+        processedYouTubeId = extracted;
+      }
+    } else if (youtubeVideoId && !youtubeUrl) {
       processedYouTubeUrl = `https://www.youtube.com/watch?v=${youtubeVideoId}`;
     }
 

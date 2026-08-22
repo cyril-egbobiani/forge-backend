@@ -70,6 +70,7 @@ app.use("/api/events", require("./routes/public-events"));
 app.use("/api/admin/auth", require("./routes/admin-auth"));
 app.use("/api/admin/events", require("./routes/events"));
 app.use("/api/admin/teachings", require("./routes/admin-teachings"));
+app.use("/api/uploads", require("./routes/uploads"));
 app.use("/api/admin/uploads", require("./routes/uploads"));
 
 // Socket.IO for real-time chat

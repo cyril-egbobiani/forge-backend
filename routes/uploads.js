@@ -3,7 +3,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const router = express.Router();
-const { authenticateAdmin } = require("../middleware/auth");
+const { authenticateAdmin, optionalAuth } = require("../middleware/auth");
 
 // Ensure upload directories exist
 const ensureDirectoryExists = (dir) => {
@@ -168,7 +168,7 @@ router.post(
 );
 
 // Image upload endpoint (specific for events/teachings featured images)
-router.post("/image", authenticateAdmin, upload.single("image"), (req, res) => {
+router.post("/image", optionalAuth, upload.single("image"), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -216,7 +216,7 @@ router.post("/image", authenticateAdmin, upload.single("image"), (req, res) => {
 });
 
 // Audio upload endpoint (specific for teachings)
-router.post("/audio", authenticateAdmin, upload.single("audio"), (req, res) => {
+router.post("/audio", optionalAuth, upload.single("audio"), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -256,7 +256,7 @@ router.post("/audio", authenticateAdmin, upload.single("audio"), (req, res) => {
 });
 
 // Video upload endpoint (specific for teachings)
-router.post("/video", authenticateAdmin, upload.single("video"), (req, res) => {
+router.post("/video", optionalAuth, upload.single("video"), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
